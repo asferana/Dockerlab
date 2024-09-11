@@ -1,0 +1,62 @@
+---
+- hosts: test_machine
+  become: yes
+  tasks:
+
+    - name: Install docker
+      ansible.builtin.package:
+        name: docker
+        state: present
+
+    - name: Start and enable docker service
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create directory for nginx image
+      ansible.builtin.file:
+        path: /var/pic
+        state: directory
+
+    - name: Upload image to the remote host
+      ansible.builtin.copy:
+        src: ./local_image.jpg
+        dest: /var/pic/image.jpg
+
+    - name: Create docker container for nginx
+      community.docker.docker_container:
+        name: nginx_container
+        image: nginx:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "80:80"
+        volumes:
+          - /var/pic:/usr/share/nginx/html/pic
+
+    - name: Create custom nginx configuration
+      ansible.builtin.copy:
+        content: |
+          server {
+              listen 80;
+              server_name _;
+
+              location / {
+                  root /usr/share/nginx/html/pic;
+                  index image.jpg;
+              }
+          }
+        dest: /var/pic/nginx.conf
+
+    - name: Restart nginx container with custom config
+      community.docker.docker_container:
+        name: nginx_container
+        image: nginx:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "80:80"
+        volumes:
+          - /var/pic:/usr/share/nginx/html/pic
+        command: ["/bin/bash", "-c", "nginx -g 'daemon off;' -c /usr/share/nginx/html/pic/nginx.conf"]
